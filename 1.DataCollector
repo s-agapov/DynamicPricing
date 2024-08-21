@@ -1,0 +1,120 @@
+
+Создание сервиса сбора данных на Go для системы динамического ценообразования
+Постановка задачи
+Сервис должен собирать данные из различных источников (системы бронирования, базы данных отелей, внешние API) и передавать их на дальнейшую обработку.
+
+Выбор технологий
+Go: Высокая производительность, масштабируемость, удобство для сетевых приложений.
+Gin: Фреймворк для веб-сервисов, обеспечивает высокую производительность и гибкость.
+HTTP клиент: Стандартный пакет net/http или сторонние библиотеки (например, http://google.golang.org/grpc).
+База данных: PostgreSQL для хранения метаданных о источниках данных и результатов сбора.
+Структура проекта
+data_collector/
+├── main.go
+├── config.yaml
+├── internal/
+│   ├── data_sources/
+│   │   ├── booking_system.go
+│   │   ├── hotel_database.go
+│   │   └── external_api.go
+│   ├── models/
+│   │   ├── datasource.go
+│   │   └── data.go
+│   └── utils/
+│       └── http.go
+└── cmd/
+    └── data_collector/
+        main.go
+Код сервиса сбора данных
+Go
+package main
+
+import (
+        "fmt"
+        "log"
+        "net/http"
+        "time"
+
+        "github.com/gin-gonic/gin"
+        "github.com/jinzhu/gorm"
+        _ "github.com/jinzhu/gorm/dialects/postgres"
+
+        "data_collector/internal/config"
+        "data_collector/internal/data_sources"
+        "data_collector/internal/models"
+        "data_collector/internal/utils/http"
+)
+
+func main() {
+        // Загрузка конфигурации
+        cfg, err := config.LoadConfig("config.yaml")
+        if err != nil {
+                log.Fatal(err)
+        }
+
+        // Подключение к базе данных
+        db, err := gorm.Open("postgres", cfg.DatabaseURL)
+        if err != nil {
+                log.Fatal(err)
+        }
+        defer db.Close()
+
+        // Инициализация источников данных
+        bookingSystem := data_sources.NewBookingSystem(cfg.BookingSystemURL)
+        hotelDatabase := data_sources.NewHotelDatabase(cfg.HotelDatabaseURL)
+        externalAPI := data_sources.NewExternalAPI(cfg.ExternalAPIURL)
+
+        // Создание HTTP сервера
+        r := gin.Default()
+
+        // Маршрут для импорта данных
+        r.POST("/data/import", func(c *gin.Context) {
+                // Получение данных из запроса
+                var data models.Data
+                if err := c.ShouldBindJSON(&data); err != nil {
+                        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+                        return
+                }
+
+                // Сохранение данных в базу
+                if err := db.Create(&data).Error; err != nil {
+                        c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+                        return
+                }
+
+                c.JSON(http.StatusOK,   
+ gin.H{"message": "Data imported successfully"})
+        })
+
+        // Запуск сбора данных в фоновом режиме
+        go func() {
+                for {
+                        // Вызов функций сбора данных из источников
+                        bookingSystem.CollectData()
+                        hotelDatabase.CollectData()
+                        externalAPI.CollectData()
+
+                        time.Sleep(time.Duration(cfg.CollectInterval) * time.Minute)
+                }
+        }()
+
+        // Запуск HTTP сервера
+        if err := r.Run(cfg.ServerAddress); err != nil {
+                log.Fatal(err)
+        }
+}
+Используйте код с осторожностью.
+
+Объяснение кода
+Загрузка конфигурации: Загружаются настройки подключения к базе данных, URL источников данных и другие параметры.
+Подключение к базе данных: Устанавливается соединение с PostgreSQL.
+Инициализация источников данных: Создаются объекты для взаимодействия с различными источниками данных.
+Создание HTTP сервера: Создается Gin-сервер для приема запросов на импорт данных.
+Маршрут для импорта данных: Обрабатывает POST-запросы с данными для сохранения в базе.
+Фоновый сбор данных: Регулярно вызываются функции сбора данных из источников.
+Дальнейшие шаги
+Реализация функций сбора данных: Каждая функция должна реализовывать логику взаимодействия с соответствующим источником данных.
+Структура данных: Определение структуры данных для хранения собранной информации.
+Обработка ошибок: Добавление более детальной обработки ошибок и логирования.
+Аутентификация и авторизация: Если источники данных требуют авторизации, необходимо реализовать соответствующие механизмы.
+Тестирование: Написание unit-тестов для проверки корректности работы сервиса.
