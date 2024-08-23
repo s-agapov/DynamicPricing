@@ -9,16 +9,8 @@ def build_model():
     data = request.get_json()
     df = pd.DataFrame(data)
 
-    X = df[['column1', 'column2']]
-    y = df['target']
 
-    model = LinearRegression()
-    model.fit(X, y)
-
-    coef = model.coef_.tolist()
-    intercept = model.intercept_
-
-    return jsonify({'coef': coef, 'intercept': intercept})
+    return jsonify(df)
 
 if __name__ == '__main__':
-    app.run(port=8083)
+    app.run(port=8085)
